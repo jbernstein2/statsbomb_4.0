@@ -4,21 +4,6 @@ pptx_generator.py
 Turns the CSV files produced by stats_processor.py (a team-comparison
 KPI table + per-player stat tables) into a formatted PowerPoint
 (.pptx) report styled after a StatsBomb-style match recap deck.
-
-Deck structure:
-  1. Title slide
-  2. For each game phase (Build-Up & Possession, Defending,
-     Progression, Final Third / Red Zone, Crossing):
-       a. Phase comparison slide - simple grouped bar chart of team
-          totals for every KPI in that phase
-       b. One slide per KPI in the phase - best 3 / worst 3 players,
-          grouped by team (team A on the left, team B on the right)
-  3. Appendix - full player-by-player tables (every player, every
-     headline KPI), grouped by team, with the highest value in each
-     column highlighted green and the lowest highlighted red
-  4. Team visuals - average position map + shot chart for each team
-  5. Supplementary KPI table (secondary stats not in the headline 16)
-  6. Full-time summary slide
 """
 
 import io
@@ -58,13 +43,8 @@ HIGHLIGHT_WORST = RGBColor(0xF4, 0xC7, 0xC3)  # light red
 HEADER_FONT = "Cambria"
 BODY_FONT = "Calibri"
 
-# Best/worst-N players shown in each metric chart (see
-# stats_processor.top_bottom_players). Keep this small on purpose so
-# the chart stays legible - the full roster still lives in the
-# appendix tables.
 TOP_BOTTOM_N = 3
 
-# Automatic logo resolution search paths
 DEFAULT_LOGO_PATHS = [
     Path("assets/Brooklyn_FC_logo.svg.webp"),
     Path("assets/brooklyn_fc_logo.png"),
@@ -75,7 +55,7 @@ DEFAULT_LOGO_PATHS = [
 
 
 # ============================================================
-# COLOR & FILE HELPERS
+# COLOR, NUMBER & FILE HELPERS
 # ============================================================
 
 def _hex_to_rgb(hex_color):
@@ -91,11 +71,28 @@ def _readable_text_color(rgb_color):
 
 
 def _find_default_logo() -> "Path | None":
-    """Finds an existing logo file automatically from common paths."""
     for p in DEFAULT_LOGO_PATHS:
         if p.exists():
             return p
     return None
+
+
+def _fmt_val(v, label=""):
+    """Formats numeric values, handling 'Forward Pass %' with two decimal points."""
+    if v is None or pd.isna(v):
+        return "-"
+    try:
+        val = float(v)
+    except (ValueError, TypeError):
+        return str(v)
+
+    lbl_lower = str(label).lower()
+    if "forward pass %" in lbl_lower or "forward_pass_pct" in lbl_lower:
+        return f"{val:.2f}%" if "%" not in str(v) else f"{val:.2f}"
+
+    if val.is_integer():
+        return str(int(val))
+    return f"{val:.1f}"
 
 
 # ============================================================
@@ -169,14 +166,8 @@ def _add_monogram(slide, center_x, center_y, diameter, letter, fill_color, text_
 
 
 def _add_logo(slide, center_x, center_y, max_dim, logo_path):
-    """
-    Adds a logo image centered at (center_x, center_y), aspect-scaled within max_dim.
-    Converts image formats (like WebP) into an in-memory PNG stream for compatibility.
-    """
     with Image.open(logo_path) as im:
         img_w, img_h = im.size
-
-        # Convert image to RGBA PNG in memory to ensure full PPTX engine compatibility
         img_bytes = io.BytesIO()
         im.convert("RGBA").save(img_bytes, format="PNG")
         img_bytes.seek(0)
@@ -231,33 +222,8 @@ def _style_table(table, header_color, header_text_color):
                     r.font.name = BODY_FONT
 
 
-def _style_single_series_bar_chart(chart, rgb_color, reverse_categories=True):
-    chart.has_legend = False
-    plot = chart.plots[0]
-    plot.has_data_labels = True
-    plot.data_labels.font.size = Pt(9)
-    plot.data_labels.font.color.rgb = DARK_TEXT
-    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
-
-    series = plot.series[0]
-    series.format.fill.solid()
-    series.format.fill.fore_color.rgb = rgb_color
-    series.format.line.fill.background()
-
-    category_axis = chart.category_axis
-    category_axis.tick_labels.font.size = Pt(9)
-    category_axis.format.line.color.rgb = RGBColor(0xD5, 0xD5, 0xD5)
-    category_axis.reverse_order = reverse_categories
-
-    value_axis = chart.value_axis
-    value_axis.visible = False
-    value_axis.has_major_gridlines = False
-    value_axis.minimum_scale = 0
-
-
 def _add_grouped_bar_chart(slide, x, y, cx, cy, categories, team_name, team_color,
                             team_values, opponent_name, opponent_color, opponent_values):
-    """Simple side-by-side team-vs-team bar chart for a list of KPIs."""
     chart_data = CategoryChartData()
     chart_data.categories = list(reversed(categories))
     chart_data.add_series(team_name, list(reversed(team_values)))
@@ -313,16 +279,37 @@ def _add_team_legend(slide, team_name, team_color, opponent_name, opponent_color
                  opponent_name, size=13, bold=True, color=DARK_TEXT)
 
 
-def _direction_note(direction):
-    if direction == "lower":
-        return "Lower is better"
-    if direction == "higher":
-        return "Higher is better"
-    return None
+def _get_top_bottom_text(df, player_col, include_goalkeepers=True, label=""):
+    """Helper to extract top and worst performers text string for a metric."""
+    if df is None or df.empty or player_col not in df.columns or "Player" not in df.columns:
+        return "N/A", "N/A"
+
+    working_df = df.copy()
+    if not include_goalkeepers and "Position" in working_df.columns:
+        working_df = working_df[working_df["Position"] != "GK"]
+
+    working_df[player_col] = pd.to_numeric(working_df[player_col], errors="coerce")
+    working_df = working_df.dropna(subset=[player_col])
+
+    if working_df.empty:
+        return "N/A", "N/A"
+
+    sorted_df = working_df.sort_values(by=player_col, ascending=False)
+
+    top_df = sorted_df.head(TOP_BOTTOM_N)
+    bottom_df = sorted_df.tail(TOP_BOTTOM_N).iloc[::-1]
+
+    top_items = [f"{r.Player} ({_fmt_val(getattr(r, player_col), label)})" for r in top_df.itertuples()]
+    bottom_items = [f"{r.Player} ({_fmt_val(getattr(r, player_col), label)})" for r in bottom_df.itertuples()]
+
+    top_str = ", ".join(top_items) if top_items else "N/A"
+    bottom_str = ", ".join(bottom_items) if bottom_items else "N/A"
+
+    return top_str, bottom_str
 
 
 # ============================================================
-# 1. TITLE SLIDE
+# 1. TITLE & SECTION BREAK SLIDES
 # ============================================================
 
 def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
@@ -345,7 +332,6 @@ def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
     _add_textbox(slide, Inches(0.8), Inches(3.85), Inches(9.5), Inches(0.4),
                  subtitle, size=12, color=GREY_LABEL, letter_spaced=False)
 
-    # Resolve logo path from argument, default assets, or fallback to monogram
     logo_to_use = logo_image if (logo_image and Path(logo_image).exists()) else _find_default_logo()
 
     if logo_to_use is not None and Path(logo_to_use).exists():
@@ -360,13 +346,29 @@ def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
     return slide
 
 
+def add_phase_title_slide(prs, phase_name, team_name, opponent_name):
+    """Section header slide breaking up each phase."""
+    slide = _blank_slide(prs)
+    _add_background(slide, prs, BG_DARK)
+    _add_decorative_arc(slide, prs)
+
+    _add_textbox(slide, Inches(0.8), Inches(2.2), Inches(11.5), Inches(0.4),
+                 "GAME PHASE ANALYSIS", size=14, color=GREY_LABEL, letter_spaced=True)
+
+    _add_textbox(slide, Inches(0.75), Inches(2.8), Inches(11.5), Inches(1.2),
+                 phase_name.upper(), size=42, bold=True, color=CREAM, font_name=HEADER_FONT)
+
+    footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
+    _add_footer(slide, prs, "Match Analysis", footer_right, on_dark=True)
+    return slide
+
+
 # ============================================================
-# 2. PHASE COMPARISON SLIDE (team totals bar chart, scoped to a phase)
+# 2. PHASE COMPARISON SLIDE
 # ============================================================
 
 def add_phase_comparison_slide(prs, phase_name, comparison_df, metrics,
                                 team_name, opponent_name, team_color, opponent_color):
-    """Grouped bar chart of team totals for every KPI in a single game phase."""
     labels = [label for label, _, _ in metrics]
 
     slide = _blank_slide(prs)
@@ -392,7 +394,7 @@ def add_phase_comparison_slide(prs, phase_name, comparison_df, metrics,
 
 
 # ============================================================
-# 3. PER-METRIC PLAYER BREAKDOWN SLIDE (best/worst N, grouped by team)
+# 3. PER-METRIC BREAKDOWN SLIDE (Team Bar Chart + Player Highlights Text)
 # ============================================================
 
 def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_value,
@@ -408,61 +410,105 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
     _add_textbox(slide, Inches(0.5), Inches(0.48), Inches(8.3), Inches(0.55),
                  label.upper(), size=24, bold=True, color=DARK_TEXT, font_name=HEADER_FONT)
 
-    note = _direction_note(direction)
-    if note:
-        _add_textbox(slide, Inches(0.5), Inches(0.98), Inches(4.0), Inches(0.28),
-                     note, size=10, italic=True, color=MUTED_TEXT)
     if stat_index is not None and stat_total is not None:
-        _add_textbox(slide, Inches(0.5), Inches(1.22), Inches(4.0), Inches(0.28),
+        _add_textbox(slide, Inches(0.5), Inches(1.1), Inches(4.0), Inches(0.28),
                      f"Statistic {stat_index} of {stat_total}", size=10, color=MUTED_TEXT)
 
-    _add_textbox(slide, Inches(9.2), Inches(0.32), Inches(3.6), Inches(0.3),
-                 "TEAM TOTAL", size=11, color=MUTED_TEXT, align=PP_ALIGN.RIGHT)
+    # --- LEFT SIDE: TEAM COMPARISON BAR CHART ---
+    t_val = float(team_value) if team_value is not None and not pd.isna(team_value) else 0.0
+    o_val = float(opponent_value) if opponent_value is not None and not pd.isna(opponent_value) else 0.0
 
-    def _fmt(v):
-        if v is None or pd.isna(v):
-            return "-"
-        return str(int(v)) if float(v).is_integer() else f"{v:.1f}"
+    chart_data = CategoryChartData()
+    chart_data.categories = ["Team Totals"]
+    chart_data.add_series(team_name, [t_val])
+    chart_data.add_series(opponent_name, [o_val])
 
-    _add_textbox(slide, Inches(9.0), Inches(0.55), Inches(1.8), Inches(0.75),
-                 _fmt(team_value), size=32, bold=True, color=team_color, align=PP_ALIGN.CENTER,
-                 font_name=HEADER_FONT)
-    _add_textbox(slide, Inches(10.8), Inches(0.55), Inches(1.9), Inches(0.75),
-                 _fmt(opponent_value), size=32, bold=True, color=opponent_color, align=PP_ALIGN.CENTER,
-                 font_name=HEADER_FONT)
-    _add_textbox(slide, Inches(9.0), Inches(1.25), Inches(1.8), Inches(0.3),
-                 team_name, size=10, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
-    _add_textbox(slide, Inches(10.8), Inches(1.25), Inches(1.9), Inches(0.3),
-                 opponent_name, size=10, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
+    gframe = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Inches(0.6), Inches(1.8), Inches(5.2), Inches(4.8), chart_data
+    )
+    chart = gframe.chart
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.TOP
+    chart.legend.include_in_layout = False
 
-    half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
-    chart_top = Inches(2.1)
-    chart_h = Inches(4.5)
-    left_left = Inches(0.6)
-    right_left = Inches(0.6) + half_w + Inches(0.2)
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    plot.data_labels.font.size = Pt(11)
+    plot.data_labels.font.bold = True
+    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    plot.gap_width = 80
 
-    for side_left, df, name, color in (
-        (left_left, team_players_df, team_name, team_color),
-        (right_left, opponent_players_df, opponent_name, opponent_color),
-    ):
-        _add_textbox(slide, side_left, chart_top - Inches(0.35), half_w, Inches(0.3),
-                     f"{name.upper()} \u2014 BEST {TOP_BOTTOM_N} / WORST {TOP_BOTTOM_N}", size=12, bold=True, color=DARK_TEXT)
+    series = plot.series
+    series[0].format.fill.solid()
+    series[0].format.fill.fore_color.rgb = team_color
+    series[0].format.line.fill.background()
+    series[1].format.fill.solid()
+    series[1].format.fill.fore_color.rgb = opponent_color
+    series[1].format.line.fill.background()
 
-        sub = sp.top_bottom_players(
-            df, player_col, n=TOP_BOTTOM_N, include_goalkeepers=include_goalkeepers,
+    value_axis = chart.value_axis
+    value_axis.visible = False
+    value_axis.has_major_gridlines = False
+    value_axis.minimum_scale = 0
+
+    category_axis = chart.category_axis
+    category_axis.tick_labels.font.size = Pt(10)
+
+    # --- RIGHT SIDE: PLAYER HIGHLIGHTS TEXT ---
+    box = slide.shapes.add_textbox(Inches(6.2), Inches(1.8), Inches(6.5), Inches(4.8))
+    tf = box.text_frame
+    tf.word_wrap = True
+
+    def _append_team_highlights(tf, df, name, color, is_first=True):
+        if not is_first:
+            p_space = tf.add_paragraph()
+            p_space.space_before = Pt(14)
+
+        p_header = tf.paragraphs[0] if is_first else tf.add_paragraph()
+        run_h = p_header.add_run()
+        run_h.text = f"{name.upper()} \u2014 PLAYER HIGHLIGHTS"
+        run_h.font.bold = True
+        run_h.font.size = Pt(14)
+        run_h.font.color.rgb = color
+        run_h.font.name = HEADER_FONT
+
+        top_str, bottom_str = _get_top_bottom_text(
+            df, player_col, include_goalkeepers=include_goalkeepers, label=label
         )
 
-        if sub is None or sub.empty:
-            _add_textbox(slide, side_left, chart_top, half_w, Inches(0.4),
-                         "No player data available", size=11, color=MUTED_TEXT)
-            continue
+        p_top = tf.add_paragraph()
+        p_top.space_before = Pt(6)
+        run_t_lbl = p_top.add_run()
+        run_t_lbl.text = "Best Performers: "
+        run_t_lbl.font.bold = True
+        run_t_lbl.font.size = Pt(12)
+        run_t_lbl.font.color.rgb = DARK_TEXT
+        run_t_lbl.font.name = BODY_FONT
 
-        chart_data = CategoryChartData()
-        chart_data.categories = sub["Player"].tolist()
-        chart_data.add_series(name, sub[player_col].tolist())
+        run_t_val = p_top.add_run()
+        run_t_val.text = top_str
+        run_t_val.font.size = Pt(12)
+        run_t_val.font.color.rgb = DARK_TEXT
+        run_t_val.font.name = BODY_FONT
 
-        gframe = slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, side_left, chart_top, half_w, chart_h, chart_data)
-        _style_single_series_bar_chart(gframe.chart, color)
+        p_bot = tf.add_paragraph()
+        p_bot.space_before = Pt(4)
+        run_b_lbl = p_bot.add_run()
+        run_b_lbl.text = "Worst Performers: "
+        run_b_lbl.font.bold = True
+        run_b_lbl.font.size = Pt(12)
+        run_b_lbl.font.color.rgb = DARK_TEXT
+        run_b_lbl.font.name = BODY_FONT
+
+        run_b_val = p_bot.add_run()
+        run_b_val.text = bottom_str
+        run_b_val.font.size = Pt(12)
+        run_b_val.font.color.rgb = DARK_TEXT
+        run_b_val.font.name = BODY_FONT
+
+    _append_team_highlights(tf, team_players_df, team_name, team_color, is_first=True)
+    _append_team_highlights(tf, opponent_players_df, opponent_name, opponent_color, is_first=False)
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
@@ -471,19 +517,11 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
 
 
 # ============================================================
-# 4. APPENDIX - FULL PLAYER TABLE, GROUPED BY TEAM, WITH
-#    CONDITIONAL FORMATTING (highest/lowest per column highlighted)
+# 4. APPENDIX - FULL PLAYER TABLE
 # ============================================================
 
 def add_appendix_table_slide(prs, section_title, phase_name, team_name, team_color,
                               player_df, metrics):
-    """
-    Full roster table (every player) for the metrics in `metrics`
-    (list of (label, key, direction) tuples). The best value in each
-    column is highlighted green, the worst is highlighted red -
-    "conditional formatting" applied at build time since PowerPoint
-    tables don't support live conditional formatting rules.
-    """
     slide = _blank_slide(prs)
     _add_background(slide, prs, BG_LIGHT)
 
@@ -526,9 +564,9 @@ def add_appendix_table_slide(prs, section_title, phase_name, team_name, team_col
 
     for r, row in enumerate(df.itertuples(index=False), start=1):
         table.cell(r, 0).text = str(row.Player)
-        for c, (_, key, _) in enumerate(available_metrics, start=1):
+        for c, (label, key, _) in enumerate(available_metrics, start=1):
             val = getattr(row, key)
-            table.cell(r, c).text = str(int(val)) if float(val).is_integer() else f"{val:.1f}"
+            table.cell(r, c).text = _fmt_val(val, label=label)
             table.cell(r, c).text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
 
     _style_table(table, team_color, _readable_text_color(team_color))
@@ -625,11 +663,12 @@ def add_supplementary_table_slide(prs, comparison_df, team_name, opponent_name, 
     table.cell(0, 2).text = opponent_name
 
     for i, record in enumerate(rows.to_dict(orient="records"), start=1):
-        table.cell(i, 0).text = str(record["Metric"])
+        metric_lbl = str(record["Metric"])
+        table.cell(i, 0).text = metric_lbl
         val_team = record[team_name]
         val_opp = record[opponent_name]
-        table.cell(i, 1).text = "-" if pd.isna(val_team) else str(val_team)
-        table.cell(i, 2).text = "-" if pd.isna(val_opp) else str(val_opp)
+        table.cell(i, 1).text = _fmt_val(val_team, label=metric_lbl)
+        table.cell(i, 2).text = _fmt_val(val_opp, label=metric_lbl)
         for c in range(3):
             table.cell(i, c).text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.CENTER
 
@@ -642,7 +681,7 @@ def add_supplementary_table_slide(prs, comparison_df, team_name, opponent_name, 
 
 
 # ============================================================
-# 7. FULL-TIME SUMMARY SLIDE (direction-aware scoring)
+# 7. FULL-TIME SUMMARY SLIDE
 # ============================================================
 
 def add_fulltime_slide(prs, comparison_df, team_name, opponent_name, team_color, opponent_color,
@@ -761,21 +800,26 @@ def generate_report(
     prs.slide_width = Inches(SLIDE_WIDTH_IN)
     prs.slide_height = Inches(SLIDE_HEIGHT_IN)
 
-    # 1. Title slide
+    # 1. Main Title slide
     add_title_slide(prs, team_name, team_rgb, opponent_name, opponent_rgb,
                      kicker=kicker, subtitle=subtitle, date_label=date_label,
                      logo_image=logo_image)
 
-    # 2. Game-phase sections: comparison slide + per-metric player breakdowns
+    # 2. Game-phase sections
     for phase in sp.GAME_PHASES:
         phase_name = phase["name"]
         phase_metrics = phase["metrics"]
 
+        # 2a. Section Title Slide
+        add_phase_title_slide(prs, phase_name, team_name, opponent_name)
+
+        # 2b. Phase Comparison Overview
         add_phase_comparison_slide(
             prs, phase_name, comparison_df, phase_metrics,
             team_name, opponent_name, team_rgb, opponent_rgb,
         )
 
+        # 2c. Metric Breakdown Slides
         player_metrics = [m for m in phase_metrics if m[1] != "ppda"]
         stat_total = len(player_metrics)
         phase_rows = comparison_df.set_index("Metric").reindex([label for label, _, _ in player_metrics])
@@ -791,32 +835,32 @@ def generate_report(
                 stat_index=i, stat_total=stat_total,
             )
 
-    # 3. Appendix - full roster tables per team per phase, conditional formatting
-    for phase in sp.GAME_PHASES:
-        phase_name = phase["name"]
-        player_metrics = [m for m in phase["metrics"] if m[1] != "ppda"]
-        if not player_metrics:
-            continue
-        add_appendix_table_slide(prs, "Appendix", phase_name, team_name, team_rgb,
-                                  team_players_df, player_metrics)
-        add_appendix_table_slide(prs, "Appendix", phase_name, opponent_name, opponent_rgb,
-                                  opponent_players_df, player_metrics)
+        # 2d. Phase Appendix Tables (Player Roster Tables for this Phase)
+        if player_metrics:
+            add_appendix_table_slide(prs, "Phase Appendix", phase_name, team_name, team_rgb,
+                                      team_players_df, player_metrics)
+            add_appendix_table_slide(prs, "Phase Appendix", phase_name, opponent_name, opponent_rgb,
+                                      opponent_players_df, player_metrics)
 
-    # 4. Team visuals - average position + shot chart, grouped by team
-    if team_avg_position_image is not None:
-        add_image_slide(prs, f"{team_name} \u2014 Average Position", team_avg_position_image, team_name, team_rgb)
-    if team_shot_chart_image is not None:
-        add_image_slide(prs, f"{team_name} \u2014 Shot Chart", team_shot_chart_image, team_name, team_rgb)
-    if opponent_avg_position_image is not None:
-        add_image_slide(prs, f"{opponent_name} \u2014 Average Position", opponent_avg_position_image, opponent_name, opponent_rgb)
-    if opponent_shot_chart_image is not None:
-        add_image_slide(prs, f"{opponent_name} \u2014 Shot Chart", opponent_shot_chart_image, opponent_name, opponent_rgb)
+        # 2e. Logically Placed Visual Images
+        p_name_lower = phase_name.lower()
+        if "build" in p_name_lower or "possession" in p_name_lower:
+            if team_avg_position_image is not None:
+                add_image_slide(prs, f"{team_name} \u2014 Average Position", team_avg_position_image, team_name, team_rgb)
+            if opponent_avg_position_image is not None:
+                add_image_slide(prs, f"{opponent_name} \u2014 Average Position", opponent_avg_position_image, opponent_name, opponent_rgb)
 
-    # 5. Supplementary KPI table
+        if "final third" in p_name_lower or "red zone" in p_name_lower:
+            if team_shot_chart_image is not None:
+                add_image_slide(prs, f"{team_name} \u2014 Shot Chart", team_shot_chart_image, team_name, team_rgb)
+            if opponent_shot_chart_image is not None:
+                add_image_slide(prs, f"{opponent_name} \u2014 Shot Chart", opponent_shot_chart_image, opponent_name, opponent_rgb)
+
+    # 3. Supplementary KPI table
     if include_supplementary_table:
         add_supplementary_table_slide(prs, comparison_df, team_name, opponent_name, team_rgb, opponent_rgb)
 
-    # 6. Full-time summary slide
+    # 4. Full-time summary slide
     add_fulltime_slide(prs, comparison_df, team_name, opponent_name, team_rgb, opponent_rgb)
 
     output_path = Path(output_path)
