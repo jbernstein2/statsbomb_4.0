@@ -474,7 +474,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         _add_textbox(slide, side_left, callout_top + Inches(0.85), card_w, Inches(0.7),
                      str(best_player), size=24, bold=True, color=DARK_TEXT)
         _add_textbox(slide, side_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(best_val), size=52, bold=True, color=color, font_name=HEADER_FONT)
+                     _fmt_val(best_val), size=30, bold=True, color=color, font_name=HEADER_FONT)
 
         worst_left = side_left + card_w + Inches(0.3)
         _add_textbox(slide, worst_left, callout_top + Inches(0.5), card_w, Inches(0.32),
@@ -482,7 +482,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         _add_textbox(slide, worst_left, callout_top + Inches(0.85), card_w, Inches(0.7),
                      str(worst_player), size=24, bold=True, color=DARK_TEXT)
         _add_textbox(slide, worst_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
+                     _fmt_val(worst_val), size=30, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
