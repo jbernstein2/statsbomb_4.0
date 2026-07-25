@@ -332,7 +332,8 @@ def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
 # ============================================================
 
 def add_phase_title_slide(prs, phase_index, phase_count, phase_name, metrics,
-                           team_name, opponent_name, team_color, opponent_color):
+                           team_name, opponent_name, team_color, opponent_color,
+                           logo_image=None):
     """Dark section-break slide introducing the upcoming game phase."""
     slide = _blank_slide(prs)
     _add_background(slide, prs, BG_DARK)
@@ -341,12 +342,21 @@ def add_phase_title_slide(prs, phase_index, phase_count, phase_name, metrics,
     _add_textbox(slide, Inches(0.9), Inches(1.7), Inches(8.0), Inches(0.4),
                  f"PHASE {phase_index} OF {phase_count}", size=13, color=GREY_LABEL, letter_spaced=True)
 
-    _add_textbox(slide, Inches(0.85), Inches(2.2), Inches(11.0), Inches(1.3),
+    _add_textbox(slide, Inches(0.85), Inches(2.2), Inches(9.0), Inches(1.3),
                  phase_name.upper(), size=42, bold=True, color=CREAM, font_name=HEADER_FONT)
 
     kpi_list = " \u2022 ".join(label for label, _, _ in metrics)
-    _add_textbox(slide, Inches(0.9), Inches(3.55), Inches(10.5), Inches(1.2),
+    _add_textbox(slide, Inches(0.9), Inches(3.55), Inches(9.5), Inches(1.2),
                  kpi_list, size=13, color=GREY_LABEL)
+
+    # Logo, top-right corner (falls back to a monogram if no logo is found)
+    logo_to_use = logo_image if (logo_image and Path(logo_image).exists()) else _find_default_logo()
+
+    if logo_to_use is not None and Path(logo_to_use).exists():
+        _add_logo(slide, Inches(12.2), Inches(1.05), Inches(1.3), logo_to_use)
+    else:
+        monogram_letter = team_name.strip()[0].upper() if team_name.strip() else "?"
+        _add_monogram(slide, Inches(12.2), Inches(1.05), Inches(1.3), monogram_letter, CREAM, BG_DARK)
 
     footer_right = f"{team_name.upper()}   vs   {opponent_name.upper()}"
     _add_footer(slide, prs, "Game Phase", footer_right, on_dark=True)
@@ -427,7 +437,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
 
     # Team totals bar chart for this single stat
     chart_top = Inches(1.9)
-    chart_h = Inches(2.7)
+    chart_h = Inches(2.1)
     chart_left = Inches(2.2)
     chart_width = Inches(SLIDE_WIDTH_IN - 4.4)
 
@@ -438,7 +448,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
     )
 
     # Best / worst performer callouts, grouped by team
-    callout_top = Inches(4.85)
+    callout_top = Inches(4.2)
     half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
     left_left = Inches(0.6)
     right_left = Inches(0.6) + half_w + Inches(0.2)
@@ -449,8 +459,8 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         (left_left, team_players_df, team_name, team_color),
         (right_left, opponent_players_df, opponent_name, opponent_color),
     ):
-        _add_textbox(slide, side_left, callout_top, half_w, Inches(0.3),
-                     f"{name.upper()} \u2014 TOP PERFORMERS", size=12, bold=True, color=DARK_TEXT)
+        _add_textbox(slide, side_left, callout_top, half_w, Inches(0.35),
+                     f"{name.upper()} \u2014 TOP PERFORMERS", size=14, bold=True, color=DARK_TEXT)
 
         (best_player, best_val), (worst_player, worst_val) = sp.best_worst_player(
             df, player_col, direction=effective_direction, include_goalkeepers=include_goalkeepers,
@@ -462,26 +472,26 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
             return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
 
         if best_player is None:
-            _add_textbox(slide, side_left, callout_top + Inches(0.35), half_w, Inches(0.4),
-                         "No player data available", size=11, color=MUTED_TEXT)
+            _add_textbox(slide, side_left, callout_top + Inches(0.45), half_w, Inches(0.4),
+                         "No player data available", size=13, color=MUTED_TEXT)
             continue
 
         card_w = Inches((half_w - Inches(0.3)) / 2)
 
-        _add_textbox(slide, side_left, callout_top + Inches(0.42), card_w, Inches(0.28),
-                     "BEST", size=10, bold=True, color=color)
-        _add_textbox(slide, side_left, callout_top + Inches(0.72), card_w, Inches(0.4),
-                     str(best_player), size=15, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, side_left, callout_top + Inches(1.12), card_w, Inches(0.5),
-                     _fmt_val(best_val), size=26, bold=True, color=color, font_name=HEADER_FONT)
+        _add_textbox(slide, side_left, callout_top + Inches(0.5), card_w, Inches(0.32),
+                     "BEST", size=16, bold=True, color=color)
+        _add_textbox(slide, side_left, callout_top + Inches(0.85), card_w, Inches(0.7),
+                     str(best_player), size=24, bold=True, color=DARK_TEXT)
+        _add_textbox(slide, side_left, callout_top + Inches(1.58), card_w, Inches(0.95),
+                     _fmt_val(best_val), size=52, bold=True, color=color, font_name=HEADER_FONT)
 
         worst_left = side_left + card_w + Inches(0.3)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.42), card_w, Inches(0.28),
-                     "WORST", size=10, bold=True, color=MUTED_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.72), card_w, Inches(0.4),
-                     str(worst_player), size=15, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(1.12), card_w, Inches(0.5),
-                     _fmt_val(worst_val), size=26, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
+        _add_textbox(slide, worst_left, callout_top + Inches(0.5), card_w, Inches(0.32),
+                     "WORST", size=16, bold=True, color=MUTED_TEXT)
+        _add_textbox(slide, worst_left, callout_top + Inches(0.85), card_w, Inches(0.7),
+                     str(worst_player), size=24, bold=True, color=DARK_TEXT)
+        _add_textbox(slide, worst_left, callout_top + Inches(1.58), card_w, Inches(0.95),
+                     _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
@@ -800,6 +810,7 @@ def generate_report(
         add_phase_title_slide(
             prs, phase_index, phase_count, phase_name, phase_metrics,
             team_name, opponent_name, team_rgb, opponent_rgb,
+            logo_image=logo_image,
         )
 
         add_phase_comparison_slide(
