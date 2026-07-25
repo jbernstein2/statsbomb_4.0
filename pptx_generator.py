@@ -439,52 +439,150 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
     )
 
     # Best / worst performer callouts, grouped by team
-    callout_top = Inches(4.2)
-    half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
-    left_left = Inches(0.6)
-    right_left = Inches(0.6) + half_w + Inches(0.2)
+    # ==========================================================
+# Best / Worst Performer Callouts
+# ==========================================================
 
-    effective_direction = direction or "higher"
+# --- Layout (calculate in inches first, then convert once) ---
+callout_top = Inches(4.2)
 
-    for side_left, df, name, color in (
-        (left_left, team_players_df, team_name, team_color),
-        (right_left, opponent_players_df, opponent_name, opponent_color),
-    ):
-        _add_textbox(slide, side_left, callout_top, half_w, Inches(0.35),
-                     f"{name.upper()} \u2014 TOP PERFORMERS", size=14, bold=True, color=DARK_TEXT)
+margin = 0.6
+gap = 0.2
 
-        (best_player, best_val), (worst_player, worst_val) = sp.best_worst_player(
-            df, player_col, direction=effective_direction, include_goalkeepers=include_goalkeepers,
+half_width_in = (SLIDE_WIDTH_IN - (2 * margin) - gap) / 2
+card_gap_in = 0.30
+card_width_in = (half_width_in - card_gap_in) / 2
+
+left_left = Inches(margin)
+right_left = Inches(margin + half_width_in + gap)
+
+half_w = Inches(half_width_in)
+card_w = Inches(card_width_in)
+
+effective_direction = direction or "higher"
+
+for side_left, df, name, color in (
+    (left_left, team_players_df, team_name, team_color),
+    (right_left, opponent_players_df, opponent_name, opponent_color),
+):
+
+    # Section title
+    _add_textbox(
+        slide,
+        side_left,
+        callout_top,
+        half_w,
+        Inches(0.30),
+        f"{name.upper()} — TOP PERFORMERS",
+        size=14,
+        bold=True,
+        color=DARK_TEXT,
+    )
+
+    (best_player, best_val), (worst_player, worst_val) = sp.best_worst_player(
+        df,
+        player_col,
+        direction=effective_direction,
+        include_goalkeepers=include_goalkeepers,
+    )
+
+    def _fmt_val(v):
+        if v is None or pd.isna(v):
+            return "-"
+        return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+
+    if best_player is None:
+        _add_textbox(
+            slide,
+            side_left,
+            callout_top + Inches(0.45),
+            half_w,
+            Inches(0.4),
+            "No player data available",
+            size=13,
+            color=MUTED_TEXT,
         )
+        continue
 
-        def _fmt_val(v):
-            if v is None or pd.isna(v):
-                return ""
-            return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+    # ---------- BEST ----------
+    best_left = side_left
 
-        if best_player is None:
-            _add_textbox(slide, side_left, callout_top + Inches(0.45), half_w, Inches(0.4),
-                         "No player data available", size=13, color=MUTED_TEXT)
-            continue
+    _add_textbox(
+        slide,
+        best_left,
+        callout_top + Inches(0.45),
+        card_w,
+        Inches(0.22),
+        "BEST",
+        size=12,
+        bold=True,
+        color=color,
+    )
 
-        card_w = Inches((half_w - Inches(0.3)) / 2)
+    _add_textbox(
+        slide,
+        best_left,
+        callout_top + Inches(0.72),
+        card_w,
+        Inches(0.42),
+        str(best_player),
+        size=22,
+        bold=True,
+        color=DARK_TEXT,
+    )
 
-        _add_textbox(slide, side_left, callout_top + Inches(0.5), card_w, Inches(0.32),
-                     "BEST", size=16, bold=True, color=color)
-        _add_textbox(slide, side_left, callout_top + Inches(0.85), card_w, Inches(0.7),
-                     str(best_player), size=24, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, side_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(best_val), size=52, bold=True, color=color, font_name=HEADER_FONT)
+    _add_textbox(
+        slide,
+        best_left,
+        callout_top + Inches(1.18),
+        card_w,
+        Inches(0.60),
+        _fmt_val(best_val),
+        size=42,
+        bold=True,
+        color=color,
+        font_name=HEADER_FONT,
+    )
 
-        worst_left = side_left + card_w + Inches(0.3)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.5), card_w, Inches(0.32),
-                     "WORST", size=16, bold=True, color=MUTED_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.85), card_w, Inches(0.7),
-                     str(worst_player), size=24, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
+    # ---------- WORST ----------
+    worst_left = side_left + card_w + Inches(card_gap_in)
 
-    footer_left = f"{phase_name} \u2014 {label}"
+    _add_textbox(
+        slide,
+        worst_left,
+        callout_top + Inches(0.45),
+        card_w,
+        Inches(0.22),
+        "WORST",
+        size=12,
+        bold=True,
+        color=MUTED_TEXT,
+    )
+
+    _add_textbox(
+        slide,
+        worst_left,
+        callout_top + Inches(0.72),
+        card_w,
+        Inches(0.42),
+        str(worst_player),
+        size=22,
+        bold=True,
+        color=DARK_TEXT,
+    )
+
+    _add_textbox(
+        slide,
+        worst_left,
+        callout_top + Inches(1.18),
+        card_w,
+        Inches(0.60),
+        _fmt_val(worst_val),
+        size=42,
+        bold=True,
+        color=MUTED_TEXT,
+        font_name=HEADER_FONT,
+    )
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
     _add_footer(slide, prs, footer_left, footer_right)
     return slide
