@@ -615,39 +615,6 @@ def analyze_team(events_file, crosses_file):
 def best_worst_player(player_df, metric_col, direction="higher", include_goalkeepers=True,
                        position_col=PLAYER_POSITION_COL):
     """
-    Returns (best_player, best_value, worst_player, worst_value) for a
-    metric, respecting direction ("higher" or "lower" is better) so
-    "best" always means "helped the team win that category" rather
-    than just "highest number". Returns (None, None, None, None) if
-    there's no usable player data.
-    """
-
-    if player_df is None or player_df.empty or metric_col not in player_df.columns \
-            or "Player" not in player_df.columns:
-        return None, None, None, None
-
-    df = player_df.copy()
-
-    if not include_goalkeepers and position_col in df.columns:
-        df = df[~df[position_col].apply(is_goalkeeper)]
-
-    df = df[["Player", metric_col]].fillna(0)
-
-    if df.empty:
-        return None, None, None, None
-
-    ascending = direction == "lower"
-    df_sorted = df.sort_values(metric_col, ascending=ascending)
-
-    best_row = df_sorted.iloc[0]
-    worst_row = df_sorted.iloc[-1]
-
-    return best_row["Player"], best_row[metric_col], worst_row["Player"], worst_row[metric_col]
-
-
-def best_worst_player(player_df, metric_col, direction="higher", include_goalkeepers=True,
-                       position_col=PLAYER_POSITION_COL):
-    """
     Returns ((best_player, best_value), (worst_player, worst_value)) for a
     metric, respecting direction ("higher" or "lower" is better). Returns
     (None, None) for a side if there's no eligible player data.
