@@ -312,15 +312,6 @@ def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
     _add_textbox(slide, Inches(0.8), Inches(3.85), Inches(9.5), Inches(0.4),
                  subtitle, size=12, color=GREY_LABEL, letter_spaced=False)
 
-    # Resolve logo path from argument, default assets, or fallback to monogram
-    logo_to_use = logo_image if (logo_image and Path(logo_image).exists()) else _find_default_logo()
-
-    if logo_to_use is not None and Path(logo_to_use).exists():
-        _add_logo(slide, Inches(11.1), Inches(3.7), Inches(2.6), logo_to_use)
-    else:
-        monogram_letter = team_name.strip()[0].upper() if team_name.strip() else "?"
-        _add_monogram(slide, Inches(11.1), Inches(3.7), Inches(2.6), monogram_letter, CREAM, BG_DARK)
-
     footer_right = f"{team_name.upper()}   vs   {opponent_name.upper()}"
     _add_footer(slide, prs, date_label or "", footer_right, on_dark=True)
 
