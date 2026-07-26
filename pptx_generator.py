@@ -242,7 +242,7 @@ def _add_grouped_bar_chart(slide, x, y, cx, cy, categories, team_name, team_colo
 
     plot = chart.plots[0]
     plot.has_data_labels = True
-    plot.data_labels.font.size = Pt(26)
+    plot.data_labels.font.size = Pt(9)
     plot.data_labels.number_format = "0.##"
     plot.data_labels.number_format_is_linked = False
     plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
@@ -311,6 +311,15 @@ def add_title_slide(prs, team_name, team_color, opponent_name, opponent_color,
 
     _add_textbox(slide, Inches(0.8), Inches(3.85), Inches(9.5), Inches(0.4),
                  subtitle, size=12, color=GREY_LABEL, letter_spaced=False)
+
+    # Resolve logo path from argument, default assets, or fallback to monogram
+    logo_to_use = logo_image if (logo_image and Path(logo_image).exists()) else _find_default_logo()
+
+    if logo_to_use is not None and Path(logo_to_use).exists():
+        _add_logo(slide, Inches(11.1), Inches(3.7), Inches(2.6), logo_to_use)
+    else:
+        monogram_letter = team_name.strip()[0].upper() if team_name.strip() else "?"
+        _add_monogram(slide, Inches(11.1), Inches(3.7), Inches(2.6), monogram_letter, CREAM, BG_DARK)
 
     footer_right = f"{team_name.upper()}   vs   {opponent_name.upper()}"
     _add_footer(slide, prs, date_label or "", footer_right, on_dark=True)
@@ -432,10 +441,15 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
     chart_left = Inches(2.2)
     chart_width = Inches(SLIDE_WIDTH_IN - 4.4)
 
+    def _chart_safe(v):
+        if v is None or pd.isna(v):
+            return 0
+        return float(v)
+
     _add_grouped_bar_chart(
         slide, chart_left, chart_top, chart_width, chart_h,
-        [label], team_name, team_color, [team_value if team_value is not None else 0],
-        opponent_name, opponent_color, [opponent_value if opponent_value is not None else 0],
+        [label], team_name, team_color, [_chart_safe(team_value)],
+        opponent_name, opponent_color, [_chart_safe(opponent_value)],
     )
 
     # Best / worst performer callouts, grouped by team
@@ -474,7 +488,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         _add_textbox(slide, side_left, callout_top + Inches(0.85), card_w, Inches(0.7),
                      str(best_player), size=24, bold=True, color=DARK_TEXT)
         _add_textbox(slide, side_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(best_val), size=30, bold=True, color=color, font_name=HEADER_FONT)
+                     _fmt_val(best_val), size=52, bold=True, color=color, font_name=HEADER_FONT)
 
         worst_left = side_left + card_w + Inches(0.3)
         _add_textbox(slide, worst_left, callout_top + Inches(0.5), card_w, Inches(0.32),
@@ -482,7 +496,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         _add_textbox(slide, worst_left, callout_top + Inches(0.85), card_w, Inches(0.7),
                      str(worst_player), size=24, bold=True, color=DARK_TEXT)
         _add_textbox(slide, worst_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(worst_val), size=30, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
+                     _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
@@ -590,8 +604,21 @@ def add_image_slide(prs, title, image_path, team_name, team_color, caption=None)
     max_h = Inches(5.1)
     top = Inches(1.2)
 
+    # Re-encode into a clean in-memory PNG rather than embedding the
+    # uploaded file as-is. User-uploaded images (phone exports, CMYK
+    # JPEGs, unusual ICC profiles, etc.) can otherwise embed in a way
+    # that PowerPoint's own validator rejects with a "repair" prompt
+    # even though the file opens fine elsewhere.
     with Image.open(image_path) as im:
         img_w, img_h = im.size
+        if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
+            im = im.convert("RGBA")
+        else:
+            im = im.convert("RGB")
+        img_bytes = io.BytesIO()
+        im.save(img_bytes, format="PNG")
+        img_bytes.seek(0)
+
     aspect = img_w / img_h
 
     if (max_w / max_h) > aspect:
@@ -602,7 +629,7 @@ def add_image_slide(prs, title, image_path, team_name, team_color, caption=None)
         height = Emu(int(width / aspect))
 
     left = Emu(int((prs.slide_width - width) / 2))
-    slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+    slide.shapes.add_picture(img_bytes, left, top, width=width, height=height)
 
     if caption:
         _add_textbox(slide, Inches(0.5), Inches(6.5), Inches(SLIDE_WIDTH_IN - 1.0), Inches(0.4),
