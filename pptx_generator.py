@@ -242,7 +242,7 @@ def _add_grouped_bar_chart(slide, x, y, cx, cy, categories, team_name, team_colo
 
     plot = chart.plots[0]
     plot.has_data_labels = True
-    plot.data_labels.font.size = Pt(9)
+    plot.data_labels.font.size = Pt(26)
     plot.data_labels.number_format = "0.##"
     plot.data_labels.number_format_is_linked = False
     plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
