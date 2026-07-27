@@ -647,13 +647,17 @@ def best_worst_player(player_df, metric_col, direction="higher", include_goalkee
     return (best_row["Player"], best_row[metric_col]), (worst_row["Player"], worst_row[metric_col])
 
 
-def top_bottom_players(player_df, metric_col, n=3, include_goalkeepers=True,
+def top_bottom_players(player_df, metric_col, direction="higher", n=3, include_goalkeepers=True,
                         position_col=PLAYER_POSITION_COL):
     """
-    Returns a small dataframe with just the top-n and bottom-n players
-    for a given metric (sorted best-to-worst), so bar charts stay
-    readable. If there are 2n or fewer players to begin with, all of
-    them are returned (no need to trim).
+    Returns (best_df, worst_df): the top-n and bottom-n players for a
+    metric, respecting direction ("higher" or "lower" is better).
+
+    best_df is ordered from best -> nth-best. worst_df is ordered from
+    worst -> nth-worst (i.e. both lists read "most notable first").
+    Each dataframe has columns ["Player", metric_col]. If there isn't
+    enough eligible player data, the returned dataframes may have
+    fewer than n rows (or be empty).
 
     include_goalkeepers=False drops rows where position_col == "GK"
     before selecting the top/bottom players. This only affects which
@@ -662,20 +666,27 @@ def top_bottom_players(player_df, metric_col, n=3, include_goalkeepers=True,
 
     if player_df is None or player_df.empty or metric_col not in player_df.columns \
             or "Player" not in player_df.columns:
-        return pd.DataFrame(columns=["Player", metric_col])
+        empty = pd.DataFrame(columns=["Player", metric_col])
+        return empty, empty.copy()
 
     df = player_df.copy()
 
     if not include_goalkeepers and position_col in df.columns:
         df = df[~df[position_col].apply(is_goalkeeper)]
 
-    df = df[["Player", metric_col]].fillna(0)
-    df = df.sort_values(metric_col, ascending=False)
+    df = df[["Player", metric_col]].dropna()
 
-    if len(df) <= 2 * n:
-        return df
+    if df.empty:
+        empty = pd.DataFrame(columns=["Player", metric_col])
+        return empty, empty.copy()
 
-    return pd.concat([df.head(n), df.tail(n)])
+    ascending = (direction == "lower")
+    df_sorted = df.sort_values(metric_col, ascending=ascending).reset_index(drop=True)
+
+    best_df = df_sorted.head(n).reset_index(drop=True)
+    worst_df = df_sorted.tail(n).iloc[::-1].reset_index(drop=True)
+
+    return best_df, worst_df
 
 
 # ============================================================
