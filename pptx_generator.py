@@ -411,146 +411,178 @@ def add_phase_comparison_slide(prs, phase_name, comparison_df, metrics,
 
 
 # ============================================================
-# 4. PER-METRIC SLIDE (team totals bar chart + best/worst performer callouts)
+# 4. PER-METRIC SLIDE (RESTRUCTURED CARD LAYOUT)
 # ============================================================
+
+def _add_player_card(slide, x, y, width, height, team_name, team_color, 
+                      players_df, player_col, direction="higher", top_n=3, include_goalkeepers=True):
+    """Draws a structured container card with top/bottom player breakdowns."""
+    # 1. Main Card Background Container
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, width, height)
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(0xF5, 0xF4, 0xF0)  # Subtle light grey/cream
+    card.line.color.rgb = RGBColor(0xE0, 0xDE, 0xD7)
+    card.line.width = Pt(1)
+    card.shadow.inherit = False
+
+    # 2. Team Color Accent Bar (Top of Card)
+    accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, width, Inches(0.08))
+    accent.fill.solid()
+    accent.fill.fore_color.rgb = team_color
+    accent.line.fill.background()
+    accent.shadow.inherit = False
+
+    # 3. Card Header (Team Name)
+    _add_textbox(
+        slide, x + Inches(0.2), y + Inches(0.18), width - Inches(0.4), Inches(0.35),
+        team_name.upper(), size=13, bold=True, color=DARK_TEXT, font_name=HEADER_FONT
+    )
+
+    # Fetch top/bottom performers
+    best_df, worst_df = sp.top_bottom_players(
+        players_df, player_col, direction=direction, n=top_n,
+        include_goalkeepers=include_goalkeepers,
+    )
+
+    if best_df.empty and worst_df.empty:
+        _add_textbox(
+            slide, x + Inches(0.2), y + Inches(0.6), width - Inches(0.4), Inches(0.35),
+            "No player data available", size=11, color=MUTED_TEXT
+        )
+        return
+
+    # Formatting helper for player stats
+    def _fmt_val(v):
+        if v is None or pd.isna(v):
+            return "-"
+        return str(int(v)) if float(v).is_integer() else f"{v:.1f}"
+
+    def _trunc(name, max_len=18):
+        name = str(name)
+        return name if len(name) <= max_len else name[:max_len - 1].rstrip() + "…"
+
+    # Sub-column layout
+    col_w = Emu(int((width - Inches(0.6)) / 2))
+    top_left = x + Inches(0.2)
+    bot_left = top_left + col_w + Inches(0.2)
+    content_top = y + Inches(0.55)
+    row_h = Inches(0.28)
+
+    # Section Headers
+    _add_textbox(slide, top_left, content_top, col_w, Inches(0.25), f"TOP {top_n}", size=10, bold=True, color=team_color)
+    _add_textbox(slide, bot_left, content_top, col_w, Inches(0.25), f"BOTTOM {top_n}", size=10, bold=True, color=MUTED_TEXT)
+
+    # Render Rows (Top vs Bottom)
+    for i in range(top_n):
+        row_y = content_top + Inches(0.3) + (i * row_h)
+
+        # Top Performers List
+        if i < len(best_df):
+            p_name = _trunc(best_df.iloc[i]["Player"])
+            p_val = _fmt_val(best_df.iloc[i][player_col])
+            
+            _add_textbox(slide, top_left, row_y, col_w - Inches(0.5), row_h, f"{i + 1}. {p_name}", size=11, color=DARK_TEXT, wrap=False)
+            _add_textbox(slide, top_left + col_w - Inches(0.5), row_y, Inches(0.5), row_h, p_val, size=11, bold=True, color=DARK_TEXT, align=PP_ALIGN.RIGHT)
+
+        # Bottom Performers List
+        if i < len(worst_df):
+            p_name = _trunc(worst_df.iloc[i]["Player"])
+            p_val = _fmt_val(worst_df.iloc[i][player_col])
+            
+            _add_textbox(slide, bot_left, row_y, col_w - Inches(0.5), row_h, f"{i + 1}. {p_name}", size=11, color=MUTED_TEXT, wrap=False)
+            _add_textbox(slide, bot_left + col_w - Inches(0.5), row_y, Inches(0.5), row_h, p_val, size=11, bold=True, color=MUTED_TEXT, align=PP_ALIGN.RIGHT)
+
 
 def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_value,
                       team_players_df, opponent_players_df,
                       team_name, opponent_name, team_color, opponent_color,
                       direction=None, include_goalkeepers=True,
                       stat_index=None, stat_total=None, top_n=3):
+    """
+    Renders a clean per-metric slide with team totals hero numbers, 
+    a minimal comparison chart, and structured performer cards.
+    """
     slide = _blank_slide(prs)
     _add_background(slide, prs, BG_LIGHT)
 
-    _add_textbox(slide, Inches(0.5), Inches(0.2), Inches(6.5), Inches(0.3),
+    # 1. Slide Title & Metadata
+    _add_textbox(slide, Inches(0.6), Inches(0.35), Inches(6.5), Inches(0.25),
                  phase_name.upper(), size=11, bold=True, color=MUTED_TEXT, letter_spaced=True)
-    _add_textbox(slide, Inches(0.5), Inches(0.48), Inches(8.3), Inches(0.55),
+    _add_textbox(slide, Inches(0.6), Inches(0.62), Inches(8.0), Inches(0.55),
                  label.upper(), size=24, bold=True, color=DARK_TEXT, font_name=HEADER_FONT)
 
     if stat_index is not None and stat_total is not None:
-        _add_textbox(slide, Inches(0.5), Inches(1.0), Inches(4.0), Inches(0.28),
+        _add_textbox(slide, Inches(0.6), Inches(1.18), Inches(4.0), Inches(0.25),
                      f"Statistic {stat_index} of {stat_total}", size=10, color=MUTED_TEXT)
 
-    _add_textbox(slide, Inches(9.2), Inches(0.32), Inches(3.6), Inches(0.3),
-                 "TEAM TOTAL", size=11, color=MUTED_TEXT, align=PP_ALIGN.RIGHT)
+    # 2. Hero Team Totals (Top Right)
+    _add_textbox(slide, Inches(9.0), Inches(0.35), Inches(3.7), Inches(0.25),
+                 "TEAM TOTAL", size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.RIGHT, letter_spaced=True)
 
     def _fmt(v):
         if v is None or pd.isna(v):
             return "-"
-        return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+        return str(int(v)) if float(v).is_integer() else f"{v:.1f}"
 
-    _add_textbox(slide, Inches(9.0), Inches(0.55), Inches(1.8), Inches(0.75),
-                 _fmt(team_value), size=32, bold=True, color=team_color, align=PP_ALIGN.CENTER,
-                 font_name=HEADER_FONT)
-    _add_textbox(slide, Inches(10.8), Inches(0.55), Inches(1.9), Inches(0.75),
-                 _fmt(opponent_value), size=32, bold=True, color=opponent_color, align=PP_ALIGN.CENTER,
-                 font_name=HEADER_FONT)
-    _add_textbox(slide, Inches(9.0), Inches(1.25), Inches(1.8), Inches(0.3),
-                 team_name, size=10, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
-    _add_textbox(slide, Inches(10.8), Inches(1.25), Inches(1.9), Inches(0.3),
-                 opponent_name, size=10, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
+    _add_textbox(slide, Inches(8.8), Inches(0.6), Inches(1.8), Inches(0.65),
+                 _fmt(team_value), size=34, bold=True, color=team_color, align=PP_ALIGN.CENTER, font_name=HEADER_FONT)
+    _add_textbox(slide, Inches(10.8), Inches(0.6), Inches(1.8), Inches(0.65),
+                 _fmt(opponent_value), size=34, bold=True, color=opponent_color, align=PP_ALIGN.CENTER, font_name=HEADER_FONT)
+    
+    _add_textbox(slide, Inches(8.8), Inches(1.22), Inches(1.8), Inches(0.25),
+                 team_name, size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
+    _add_textbox(slide, Inches(10.8), Inches(1.22), Inches(1.8), Inches(0.25),
+                 opponent_name, size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
 
-    # Team totals bar chart for this single stat
-    chart_top = Inches(1.9)
-    chart_h = Inches(1.7)
-    chart_left = Inches(2.2)
-    chart_width = Inches(SLIDE_WIDTH_IN - 4.4)
+    # 3. Clean Middle Horizontal Bar Chart (No category axis clutter)
+    chart_top = Inches(1.75)
+    chart_h = Inches(1.5)
+    chart_left = Inches(1.5)
+    chart_width = Inches(SLIDE_WIDTH_IN - 3.0)
 
     def _chart_safe(v):
-        if v is None or pd.isna(v):
-            return 0
-        return float(v)
+        return 0.0 if (v is None or pd.isna(v)) else float(v)
 
-    _add_grouped_bar_chart(
+    # Pass an empty string category so "Possession Lost" isn't repeated on the chart axis
+    chart = _add_grouped_bar_chart(
         slide, chart_left, chart_top, chart_width, chart_h,
-        [label], team_name, team_color, [_chart_safe(team_value)],
+        [""], team_name, team_color, [_chart_safe(team_value)],
         opponent_name, opponent_color, [_chart_safe(opponent_value)],
     )
+    
+    # Format data labels cleanly without trailing decimal points
+    for series in chart.plots[0].series:
+        series.data_labels.number_format = "0"
+        series.data_labels.font.size = Pt(10)
 
-    # Best / worst performer callouts, grouped by team.
-    # Each side shows a compact "TOP N" / "BOTTOM N" ranked list
-    # (rank, player, value) rather than a single giant best/worst
-    # number, so it always fits regardless of top_n or name length.
-    callout_top = Inches(4.0)
-    half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
-    left_left = Inches(0.6)
-    right_left = Inches(0.6) + half_w + Inches(0.2)
+    # 4. Side-by-Side Performer Container Cards
+    card_y = Inches(3.5)
+    card_w = Inches((SLIDE_WIDTH_IN - 1.5) / 2)
+    card_h = Inches(3.3)
+    left_card_x = Inches(0.6)
+    right_card_x = left_card_x + card_w + Inches(0.3)
 
     effective_direction = direction or "higher"
 
-    def _fmt_val(v):
-        if v is None or pd.isna(v):
-            return "-"
-        return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+    # Team 1 Card
+    _add_player_card(
+        slide, left_card_x, card_y, card_w, card_h,
+        team_name, team_color, team_players_df, player_col,
+        direction=effective_direction, top_n=top_n, include_goalkeepers=include_goalkeepers
+    )
 
-    def _truncate_name(name, max_chars=20):
-        name = str(name)
-        return name if len(name) <= max_chars else name[: max_chars - 1].rstrip() + "\u2026"
+    # Team 2 Card
+    _add_player_card(
+        slide, right_card_x, card_y, card_w, card_h,
+        opponent_name, opponent_color, opponent_players_df, player_col,
+        direction=effective_direction, top_n=top_n, include_goalkeepers=include_goalkeepers
+    )
 
-    list_gap = Inches(0.15)
-    list_w = Emu(int((half_w - list_gap) / 2))
-    header_h = Inches(0.28)
-    sublabel_h = Inches(0.26)
-    row_h = Inches(0.27)
-
-    for side_left, df, name, color in (
-        (left_left, team_players_df, team_name, team_color),
-        (right_left, opponent_players_df, opponent_name, opponent_color),
-    ):
-        _add_textbox(
-            slide, side_left, callout_top, half_w, header_h,
-            f"{name.upper()} \u2014 TOP PERFORMERS",
-            size=13, bold=True, color=DARK_TEXT, wrap=False
-        )
-
-        best_df, worst_df = sp.top_bottom_players(
-            df, player_col, direction=effective_direction, n=top_n,
-            include_goalkeepers=include_goalkeepers,
-        )
-
-        if best_df.empty and worst_df.empty:
-            _add_textbox(
-                slide, side_left, callout_top + header_h + Inches(0.05),
-                half_w, Inches(0.35),
-                "No player data available",
-                size=12, color=MUTED_TEXT, wrap=False
-            )
-            continue
-
-        best_left = side_left
-        worst_left = side_left + list_w + list_gap
-        sublabel_top = callout_top + header_h + Inches(0.08)
-        rows_top = sublabel_top + sublabel_h
-
-        _add_textbox(slide, best_left, sublabel_top, list_w, sublabel_h,
-                     f"TOP {top_n}", size=11, bold=True, color=color, wrap=False)
-        _add_textbox(slide, worst_left, sublabel_top, list_w, sublabel_h,
-                     f"BOTTOM {top_n}", size=11, bold=True, color=MUTED_TEXT, wrap=False)
-
-        for i in range(top_n):
-            row_top = rows_top + row_h * i
-
-            if i < len(best_df):
-                player = _truncate_name(best_df.iloc[i]["Player"])
-                value = _fmt_val(best_df.iloc[i][player_col])
-                _add_textbox(
-                    slide, best_left, row_top, list_w, row_h,
-                    f"{i + 1}. {player}  \u2014  {value}",
-                    size=11, color=DARK_TEXT, wrap=False
-                )
-
-            if i < len(worst_df):
-                player = _truncate_name(worst_df.iloc[i]["Player"])
-                value = _fmt_val(worst_df.iloc[i][player_col])
-                _add_textbox(
-                    slide, worst_left, row_top, list_w, row_h,
-                    f"{i + 1}. {player}  \u2014  {value}",
-                    size=11, color=MUTED_TEXT, wrap=False
-                )
-
-    footer_left = f"{phase_name} \u2014 {label}"
+    # 5. Footer
+    footer_left = f"{phase_name} — {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
     _add_footer(slide, prs, footer_left, footer_right)
+
     return slide
 
 
