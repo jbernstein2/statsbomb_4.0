@@ -132,12 +132,16 @@ def _add_textbox(
     if anchor is not None:
         tf.vertical_anchor = anchor
 
-    # Replace default empty run (prevents corruption)
+    # Replace default empty run (prevents corruption). Note: setting
+    # p.text = "" leaves the paragraph with zero runs in python-pptx,
+    # so p.runs[0] would raise IndexError for blank strings (e.g. an
+    # optional field left empty in the Streamlit form). Adding the
+    # run explicitly avoids that regardless of whether text is empty.
     p = tf.paragraphs[0]
-    p.text = " ".join(text) if letter_spaced else text
     p.alignment = align
 
-    run = p.runs[0]
+    run = p.add_run()
+    run.text = " ".join(text) if letter_spaced else text
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.italic = italic
@@ -484,7 +488,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         return name if len(name) <= max_chars else name[: max_chars - 1].rstrip() + "\u2026"
 
     list_gap = Inches(0.15)
-    list_w = Inches((half_w - list_gap) / 2)
+    list_w = Emu(int((half_w - list_gap) / 2))
     header_h = Inches(0.28)
     sublabel_h = Inches(0.26)
     row_h = Inches(0.27)
