@@ -411,34 +411,73 @@ def add_phase_comparison_slide(prs, phase_name, comparison_df, metrics,
 
 
 # ============================================================
-# 4. PER-METRIC SLIDE (RESTRUCTURED CARD LAYOUT)
+# 4. PER-METRIC SLIDE (TOP-RIGHT CHART + EXPANDED CARDS)
 # ============================================================
+
+def _add_vertical_column_chart(slide, x, y, cx, cy, team_name, team_color, team_val, opponent_name, opponent_color, opponent_val):
+    """Draws a compact vertical column chart to sit under team total numbers."""
+    chart_data = CategoryChartData()
+    chart_data.categories = [""]
+    chart_data.add_series(team_name, [team_val])
+    chart_data.add_series(opponent_name, [opponent_val])
+
+    gframe = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, cx, cy, chart_data)
+    chart = gframe.chart
+    chart.has_legend = False
+
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    plot.data_labels.font.size = Pt(10)
+    plot.data_labels.font.bold = True
+    plot.data_labels.number_format = "0.##"
+    plot.data_labels.number_format_is_linked = False
+    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    plot.gap_width = 100
+    plot.overlap = -20
+
+    series = plot.series
+    series[0].format.fill.solid()
+    series[0].format.fill.fore_color.rgb = team_color
+    series[0].format.line.fill.background()
+    series[1].format.fill.solid()
+    series[1].format.fill.fore_color.rgb = opponent_color
+    series[1].format.line.fill.background()
+
+    category_axis = chart.category_axis
+    category_axis.visible = False
+
+    value_axis = chart.value_axis
+    value_axis.visible = False
+    value_axis.has_major_gridlines = False
+    value_axis.minimum_scale = 0
+
+    return chart
+
 
 def _add_player_card(slide, x, y, width, height, team_name, team_color, 
                       players_df, player_col, direction="higher", top_n=3, include_goalkeepers=True):
-    """Draws a structured container card with top/bottom player breakdowns."""
-    # 1. Main Card Background Container
+    """Draws a large container card for player breakdowns with high-legibility fonts."""
+    # Background Card Container
     card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, width, height)
     card.fill.solid()
-    card.fill.fore_color.rgb = RGBColor(0xF5, 0xF4, 0xF0)  # Subtle light grey/cream
+    card.fill.fore_color.rgb = RGBColor(0xF5, 0xF4, 0xF0)
     card.line.color.rgb = RGBColor(0xE0, 0xDE, 0xD7)
     card.line.width = Pt(1)
     card.shadow.inherit = False
 
-    # 2. Team Color Accent Bar (Top of Card)
+    # Top Color Accent Bar
     accent = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, width, Inches(0.08))
     accent.fill.solid()
     accent.fill.fore_color.rgb = team_color
     accent.line.fill.background()
     accent.shadow.inherit = False
 
-    # 3. Card Header (Team Name)
+    # Team Name Header
     _add_textbox(
-        slide, x + Inches(0.2), y + Inches(0.18), width - Inches(0.4), Inches(0.35),
-        team_name.upper(), size=13, bold=True, color=DARK_TEXT, font_name=HEADER_FONT
+        slide, x + Inches(0.25), y + Inches(0.18), width - Inches(0.5), Inches(0.4),
+        team_name.upper(), size=15, bold=True, color=DARK_TEXT, font_name=HEADER_FONT
     )
 
-    # Fetch top/bottom performers
     best_df, worst_df = sp.top_bottom_players(
         players_df, player_col, direction=direction, n=top_n,
         include_goalkeepers=include_goalkeepers,
@@ -446,12 +485,11 @@ def _add_player_card(slide, x, y, width, height, team_name, team_color,
 
     if best_df.empty and worst_df.empty:
         _add_textbox(
-            slide, x + Inches(0.2), y + Inches(0.6), width - Inches(0.4), Inches(0.35),
-            "No player data available", size=11, color=MUTED_TEXT
+            slide, x + Inches(0.25), y + Inches(0.7), width - Inches(0.5), Inches(0.4),
+            "No player data available", size=13, color=MUTED_TEXT
         )
         return
 
-    # Formatting helper for player stats
     def _fmt_val(v):
         if v is None or pd.isna(v):
             return "-"
@@ -461,36 +499,31 @@ def _add_player_card(slide, x, y, width, height, team_name, team_color,
         name = str(name)
         return name if len(name) <= max_len else name[:max_len - 1].rstrip() + "…"
 
-    # Sub-column layout
-    col_w = Emu(int((width - Inches(0.6)) / 2))
-    top_left = x + Inches(0.2)
+    col_w = Emu(int((width - Inches(0.7)) / 2))
+    top_left = x + Inches(0.25)
     bot_left = top_left + col_w + Inches(0.2)
-    content_top = y + Inches(0.55)
-    row_h = Inches(0.28)
+    content_top = y + Inches(0.68)
+    row_h = Inches(0.42)
 
-    # Section Headers
-    _add_textbox(slide, top_left, content_top, col_w, Inches(0.25), f"TOP {top_n}", size=10, bold=True, color=team_color)
-    _add_textbox(slide, bot_left, content_top, col_w, Inches(0.25), f"BOTTOM {top_n}", size=10, bold=True, color=MUTED_TEXT)
+    # Subheaders
+    _add_textbox(slide, top_left, content_top, col_w, Inches(0.3), f"TOP {top_n}", size=12, bold=True, color=team_color)
+    _add_textbox(slide, bot_left, content_top, col_w, Inches(0.3), f"BOTTOM {top_n}", size=12, bold=True, color=MUTED_TEXT)
 
-    # Render Rows (Top vs Bottom)
+    # Player Rows
     for i in range(top_n):
-        row_y = content_top + Inches(0.3) + (i * row_h)
+        row_y = content_top + Inches(0.38) + (i * row_h)
 
-        # Top Performers List
         if i < len(best_df):
             p_name = _trunc(best_df.iloc[i]["Player"])
             p_val = _fmt_val(best_df.iloc[i][player_col])
-            
-            _add_textbox(slide, top_left, row_y, col_w - Inches(0.5), row_h, f"{i + 1}. {p_name}", size=11, color=DARK_TEXT, wrap=False)
-            _add_textbox(slide, top_left + col_w - Inches(0.5), row_y, Inches(0.5), row_h, p_val, size=11, bold=True, color=DARK_TEXT, align=PP_ALIGN.RIGHT)
+            _add_textbox(slide, top_left, row_y, col_w - Inches(0.6), row_h, f"{i + 1}. {p_name}", size=13, color=DARK_TEXT, wrap=False)
+            _add_textbox(slide, top_left + col_w - Inches(0.6), row_y, Inches(0.6), row_h, p_val, size=13, bold=True, color=DARK_TEXT, align=PP_ALIGN.RIGHT)
 
-        # Bottom Performers List
         if i < len(worst_df):
             p_name = _trunc(worst_df.iloc[i]["Player"])
             p_val = _fmt_val(worst_df.iloc[i][player_col])
-            
-            _add_textbox(slide, bot_left, row_y, col_w - Inches(0.5), row_h, f"{i + 1}. {p_name}", size=11, color=MUTED_TEXT, wrap=False)
-            _add_textbox(slide, bot_left + col_w - Inches(0.5), row_y, Inches(0.5), row_h, p_val, size=11, bold=True, color=MUTED_TEXT, align=PP_ALIGN.RIGHT)
+            _add_textbox(slide, bot_left, row_y, col_w - Inches(0.6), row_h, f"{i + 1}. {p_name}", size=13, color=MUTED_TEXT, wrap=False)
+            _add_textbox(slide, bot_left + col_w - Inches(0.6), row_y, Inches(0.6), row_h, p_val, size=13, bold=True, color=MUTED_TEXT, align=PP_ALIGN.RIGHT)
 
 
 def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_value,
@@ -498,25 +531,21 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
                       team_name, opponent_name, team_color, opponent_color,
                       direction=None, include_goalkeepers=True,
                       stat_index=None, stat_total=None, top_n=3):
-    """
-    Renders a clean per-metric slide with team totals hero numbers, 
-    a minimal comparison chart, and structured performer cards.
-    """
     slide = _blank_slide(prs)
     _add_background(slide, prs, BG_LIGHT)
 
-    # 1. Slide Title & Metadata
+    # 1. Slide Title & Header Info (Top Left)
     _add_textbox(slide, Inches(0.6), Inches(0.35), Inches(6.5), Inches(0.25),
                  phase_name.upper(), size=11, bold=True, color=MUTED_TEXT, letter_spaced=True)
-    _add_textbox(slide, Inches(0.6), Inches(0.62), Inches(8.0), Inches(0.55),
-                 label.upper(), size=24, bold=True, color=DARK_TEXT, font_name=HEADER_FONT)
+    _add_textbox(slide, Inches(0.6), Inches(0.62), Inches(7.5), Inches(0.6),
+                 label.upper(), size=26, bold=True, color=DARK_TEXT, font_name=HEADER_FONT)
 
     if stat_index is not None and stat_total is not None:
-        _add_textbox(slide, Inches(0.6), Inches(1.18), Inches(4.0), Inches(0.25),
+        _add_textbox(slide, Inches(0.6), Inches(1.25), Inches(4.0), Inches(0.25),
                      f"Statistic {stat_index} of {stat_total}", size=10, color=MUTED_TEXT)
 
-    # 2. Hero Team Totals (Top Right)
-    _add_textbox(slide, Inches(9.0), Inches(0.35), Inches(3.7), Inches(0.25),
+    # 2. Hero Team Totals & Vertical Column Chart (Top Right)
+    _add_textbox(slide, Inches(8.2), Inches(0.35), Inches(4.5), Inches(0.25),
                  "TEAM TOTAL", size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.RIGHT, letter_spaced=True)
 
     def _fmt(v):
@@ -524,41 +553,30 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
             return "-"
         return str(int(v)) if float(v).is_integer() else f"{v:.1f}"
 
-    _add_textbox(slide, Inches(8.8), Inches(0.6), Inches(1.8), Inches(0.65),
+    _add_textbox(slide, Inches(8.2), Inches(0.58), Inches(2.1), Inches(0.6),
                  _fmt(team_value), size=34, bold=True, color=team_color, align=PP_ALIGN.CENTER, font_name=HEADER_FONT)
-    _add_textbox(slide, Inches(10.8), Inches(0.6), Inches(1.8), Inches(0.65),
+    _add_textbox(slide, Inches(10.6), Inches(0.58), Inches(2.1), Inches(0.6),
                  _fmt(opponent_value), size=34, bold=True, color=opponent_color, align=PP_ALIGN.CENTER, font_name=HEADER_FONT)
     
-    _add_textbox(slide, Inches(8.8), Inches(1.22), Inches(1.8), Inches(0.25),
+    _add_textbox(slide, Inches(8.2), Inches(1.18), Inches(2.1), Inches(0.25),
                  team_name, size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
-    _add_textbox(slide, Inches(10.8), Inches(1.22), Inches(1.8), Inches(0.25),
+    _add_textbox(slide, Inches(10.6), Inches(1.18), Inches(2.1), Inches(0.25),
                  opponent_name, size=10, bold=True, color=MUTED_TEXT, align=PP_ALIGN.CENTER)
 
-    # 3. Clean Middle Horizontal Bar Chart (No category axis clutter)
-    chart_top = Inches(1.75)
-    chart_h = Inches(1.5)
-    chart_left = Inches(1.5)
-    chart_width = Inches(SLIDE_WIDTH_IN - 3.0)
-
+    # Vertical Column Chart placed directly underneath team totals
     def _chart_safe(v):
         return 0.0 if (v is None or pd.isna(v)) else float(v)
 
-    # Pass an empty string category so "Possession Lost" isn't repeated on the chart axis
-    chart = _add_grouped_bar_chart(
-        slide, chart_left, chart_top, chart_width, chart_h,
-        [""], team_name, team_color, [_chart_safe(team_value)],
-        opponent_name, opponent_color, [_chart_safe(opponent_value)],
+    _add_vertical_column_chart(
+        slide, Inches(8.4), Inches(1.45), Inches(4.1), Inches(1.5),
+        team_name, team_color, _chart_safe(team_value),
+        opponent_name, opponent_color, _chart_safe(opponent_value)
     )
-    
-    # Format data labels cleanly without trailing decimal points
-    for series in chart.plots[0].series:
-        series.data_labels.number_format = "0"
-        series.data_labels.font.size = Pt(10)
 
-    # 4. Side-by-Side Performer Container Cards
-    card_y = Inches(3.5)
-    card_w = Inches((SLIDE_WIDTH_IN - 1.5) / 2)
-    card_h = Inches(3.3)
+    # 3. Large Player Performance Cards (Bottom Half)
+    card_y = Inches(3.1)
+    card_w = Inches((SLIDE_WIDTH_IN - 1.5) / 2)  # ~5.9 inches wide each
+    card_h = Inches(3.7)
     left_card_x = Inches(0.6)
     right_card_x = left_card_x + card_w + Inches(0.3)
 
@@ -578,14 +596,12 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         direction=effective_direction, top_n=top_n, include_goalkeepers=include_goalkeepers
     )
 
-    # 5. Footer
+    # 4. Footer
     footer_left = f"{phase_name} — {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
     _add_footer(slide, prs, footer_left, footer_right)
 
     return slide
-
-
 # ============================================================
 # 5. APPENDIX - FULL PLAYER TABLE, GROUPED BY TEAM, WITH
 #    CONDITIONAL FORMATTING (highest/lowest per column highlighted)
