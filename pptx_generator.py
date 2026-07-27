@@ -132,7 +132,7 @@ def _add_textbox(
     if anchor is not None:
         tf.vertical_anchor = anchor
 
-    # Replace default empty run (prevents PowerPoint corruption)
+    # Replace default empty run (prevents corruption)
     p = tf.paragraphs[0]
     p.text = " ".join(text) if letter_spaced else text
     p.alignment = align
@@ -145,7 +145,6 @@ def _add_textbox(
     run.font.name = font_name
 
     return box
-
 
 
 def _add_footer(slide, prs, left_text, right_text, on_dark=False):
@@ -464,7 +463,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         opponent_name, opponent_color, [_chart_safe(opponent_value)],
     )
 
-    # Best / worst performer callouts, grouped by team
+        # Best / worst performer callouts, grouped by team
     callout_top = Inches(4.2)
     half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
     left_left = Inches(0.6)
@@ -500,8 +499,8 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
             )
             continue
 
-        # Wider, safer card width (prevents wrap + XML corruption)
-        card_w = Inches((half_w - Inches(0.2)) / 2)
+        # Widened card width (prevents wrap + XML corruption)
+        card_w = Inches((half_w - Inches(0.1)) / 2)
 
         # BEST card
         _add_textbox(
@@ -523,7 +522,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         )
 
         # WORST card
-        worst_left = side_left + card_w + Inches(0.2)
+        worst_left = side_left + card_w + Inches(0.1)
 
         _add_textbox(
             slide, worst_left, callout_top + Inches(0.5),
@@ -542,7 +541,6 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
             _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT,
             font_name=HEADER_FONT, wrap=False
         )
-
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
