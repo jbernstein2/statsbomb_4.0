@@ -414,7 +414,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
                       team_players_df, opponent_players_df,
                       team_name, opponent_name, team_color, opponent_color,
                       direction=None, include_goalkeepers=True,
-                      stat_index=None, stat_total=None):
+                      stat_index=None, stat_total=None, top_n=3):
     slide = _blank_slide(prs)
     _add_background(slide, prs, BG_LIGHT)
 
@@ -448,7 +448,7 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
 
     # Team totals bar chart for this single stat
     chart_top = Inches(1.9)
-    chart_h = Inches(2.1)
+    chart_h = Inches(1.7)
     chart_left = Inches(2.2)
     chart_width = Inches(SLIDE_WIDTH_IN - 4.4)
 
@@ -463,84 +463,86 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         opponent_name, opponent_color, [_chart_safe(opponent_value)],
     )
 
-        # Best / worst performer callouts, grouped by team
-    callout_top = Inches(4.2)
+    # Best / worst performer callouts, grouped by team.
+    # Each side shows a compact "TOP N" / "BOTTOM N" ranked list
+    # (rank, player, value) rather than a single giant best/worst
+    # number, so it always fits regardless of top_n or name length.
+    callout_top = Inches(4.0)
     half_w = Inches((SLIDE_WIDTH_IN - 1.4) / 2)
     left_left = Inches(0.6)
     right_left = Inches(0.6) + half_w + Inches(0.2)
 
     effective_direction = direction or "higher"
 
+    def _fmt_val(v):
+        if v is None or pd.isna(v):
+            return "-"
+        return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+
+    def _truncate_name(name, max_chars=20):
+        name = str(name)
+        return name if len(name) <= max_chars else name[: max_chars - 1].rstrip() + "\u2026"
+
+    list_gap = Inches(0.15)
+    list_w = Inches((half_w - list_gap) / 2)
+    header_h = Inches(0.28)
+    sublabel_h = Inches(0.26)
+    row_h = Inches(0.27)
+
     for side_left, df, name, color in (
         (left_left, team_players_df, team_name, team_color),
         (right_left, opponent_players_df, opponent_name, opponent_color),
     ):
         _add_textbox(
-            slide, side_left, callout_top, half_w, Inches(0.35),
+            slide, side_left, callout_top, half_w, header_h,
             f"{name.upper()} \u2014 TOP PERFORMERS",
-            size=14, bold=True, color=DARK_TEXT, wrap=False
+            size=13, bold=True, color=DARK_TEXT, wrap=False
         )
 
-        (best_player, best_val), (worst_player, worst_val) = sp.best_worst_player(
-            df, player_col, direction=effective_direction, include_goalkeepers=include_goalkeepers,
+        best_df, worst_df = sp.top_bottom_players(
+            df, player_col, direction=effective_direction, n=top_n,
+            include_goalkeepers=include_goalkeepers,
         )
 
-        def _fmt_val(v):
-            if v is None or pd.isna(v):
-                return ""
-            return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
-
-        if best_player is None:
+        if best_df.empty and worst_df.empty:
             _add_textbox(
-                slide, side_left, callout_top + Inches(0.45),
-                half_w, Inches(0.4),
+                slide, side_left, callout_top + header_h + Inches(0.05),
+                half_w, Inches(0.35),
                 "No player data available",
-                size=13, color=MUTED_TEXT, wrap=False
+                size=12, color=MUTED_TEXT, wrap=False
             )
             continue
 
-        # Widened card width (prevents wrap + XML corruption)
-        card_w = Inches((half_w - Inches(0.1)) / 2)
+        best_left = side_left
+        worst_left = side_left + list_w + list_gap
+        sublabel_top = callout_top + header_h + Inches(0.08)
+        rows_top = sublabel_top + sublabel_h
 
-        # BEST card
-        _add_textbox(
-            slide, side_left, callout_top + Inches(0.5),
-            card_w, Inches(0.32),
-            "BEST", size=16, bold=True, color=color, wrap=False
-        )
-        _add_textbox(
-            slide, side_left, callout_top + Inches(0.85),
-            card_w, Inches(0.7),
-            str(best_player), size=24, bold=True, color=DARK_TEXT,
-            wrap=False, autosize=True
-        )
-        _add_textbox(
-            slide, side_left, callout_top + Inches(1.58),
-            card_w, Inches(0.95),
-            _fmt_val(best_val), size=52, bold=True, color=color,
-            font_name=HEADER_FONT, wrap=False
-        )
+        _add_textbox(slide, best_left, sublabel_top, list_w, sublabel_h,
+                     f"TOP {top_n}", size=11, bold=True, color=color, wrap=False)
+        _add_textbox(slide, worst_left, sublabel_top, list_w, sublabel_h,
+                     f"BOTTOM {top_n}", size=11, bold=True, color=MUTED_TEXT, wrap=False)
 
-        # WORST card
-        worst_left = side_left + card_w + Inches(0.1)
+        for i in range(top_n):
+            row_top = rows_top + row_h * i
 
-        _add_textbox(
-            slide, worst_left, callout_top + Inches(0.5),
-            card_w, Inches(0.32),
-            "WORST", size=16, bold=True, color=MUTED_TEXT, wrap=False
-        )
-        _add_textbox(
-            slide, worst_left, callout_top + Inches(0.85),
-            card_w, Inches(0.7),
-            str(worst_player), size=24, bold=True, color=DARK_TEXT,
-            wrap=False, autosize=True
-        )
-        _add_textbox(
-            slide, worst_left, callout_top + Inches(1.58),
-            card_w, Inches(0.95),
-            _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT,
-            font_name=HEADER_FONT, wrap=False
-        )
+            if i < len(best_df):
+                player = _truncate_name(best_df.iloc[i]["Player"])
+                value = _fmt_val(best_df.iloc[i][player_col])
+                _add_textbox(
+                    slide, best_left, row_top, list_w, row_h,
+                    f"{i + 1}. {player}  \u2014  {value}",
+                    size=11, color=DARK_TEXT, wrap=False
+                )
+
+            if i < len(worst_df):
+                player = _truncate_name(worst_df.iloc[i]["Player"])
+                value = _fmt_val(worst_df.iloc[i][player_col])
+                _add_textbox(
+                    slide, worst_left, row_top, list_w, row_h,
+                    f"{i + 1}. {player}  \u2014  {value}",
+                    size=11, color=MUTED_TEXT, wrap=False
+                )
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
