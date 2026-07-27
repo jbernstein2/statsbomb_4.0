@@ -115,25 +115,37 @@ def _add_background(slide, prs, rgb_color):
     return bg
 
 
-def _add_textbox(slide, left, top, width, height, text, size=18, bold=False, italic=False,
-                  color=DARK_TEXT, align=PP_ALIGN.LEFT, font_name=BODY_FONT,
-                  anchor=None, letter_spaced=False):
+def _add_textbox(
+    slide, left, top, width, height, text,
+    size=18, bold=False, italic=False,
+    color=DARK_TEXT, align=PP_ALIGN.LEFT,
+    font_name=BODY_FONT, anchor=None,
+    letter_spaced=False, autosize=False, wrap=True
+):
     box = slide.shapes.add_textbox(left, top, width, height)
     tf = box.text_frame
-    tf.word_wrap = True
+
+    tf.word_wrap = wrap
+    if autosize:
+        tf.auto_size = True
+
     if anchor is not None:
         tf.vertical_anchor = anchor
+
+    # Replace default empty run (prevents PowerPoint corruption)
     p = tf.paragraphs[0]
+    p.text = " ".join(text) if letter_spaced else text
     p.alignment = align
-    run = p.add_run()
-    display_text = " ".join(text) if letter_spaced else text
-    run.text = display_text
+
+    run = p.runs[0]
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.italic = italic
     run.font.color.rgb = color
     run.font.name = font_name
+
     return box
+
 
 
 def _add_footer(slide, prs, left_text, right_text, on_dark=False):
@@ -464,8 +476,11 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
         (left_left, team_players_df, team_name, team_color),
         (right_left, opponent_players_df, opponent_name, opponent_color),
     ):
-        _add_textbox(slide, side_left, callout_top, half_w, Inches(0.35),
-                     f"{name.upper()} \u2014 TOP PERFORMERS", size=14, bold=True, color=DARK_TEXT)
+        _add_textbox(
+            slide, side_left, callout_top, half_w, Inches(0.35),
+            f"{name.upper()} \u2014 TOP PERFORMERS",
+            size=14, bold=True, color=DARK_TEXT, wrap=False
+        )
 
         (best_player, best_val), (worst_player, worst_val) = sp.best_worst_player(
             df, player_col, direction=effective_direction, include_goalkeepers=include_goalkeepers,
@@ -477,26 +492,57 @@ def add_metric_slide(prs, phase_name, label, player_col, team_value, opponent_va
             return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
 
         if best_player is None:
-            _add_textbox(slide, side_left, callout_top + Inches(0.45), half_w, Inches(0.4),
-                         "No player data available", size=13, color=MUTED_TEXT)
+            _add_textbox(
+                slide, side_left, callout_top + Inches(0.45),
+                half_w, Inches(0.4),
+                "No player data available",
+                size=13, color=MUTED_TEXT, wrap=False
+            )
             continue
 
-        card_w = Inches((half_w - Inches(0.3)) / 2)
+        # Wider, safer card width (prevents wrap + XML corruption)
+        card_w = Inches((half_w - Inches(0.2)) / 2)
 
-        _add_textbox(slide, side_left, callout_top + Inches(0.5), card_w, Inches(0.32),
-                     "BEST", size=16, bold=True, color=color)
-        _add_textbox(slide, side_left, callout_top + Inches(0.85), card_w, Inches(0.7),
-                     str(best_player), size=24, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, side_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(best_val), size=52, bold=True, color=color, font_name=HEADER_FONT)
+        # BEST card
+        _add_textbox(
+            slide, side_left, callout_top + Inches(0.5),
+            card_w, Inches(0.32),
+            "BEST", size=16, bold=True, color=color, wrap=False
+        )
+        _add_textbox(
+            slide, side_left, callout_top + Inches(0.85),
+            card_w, Inches(0.7),
+            str(best_player), size=24, bold=True, color=DARK_TEXT,
+            wrap=False, autosize=True
+        )
+        _add_textbox(
+            slide, side_left, callout_top + Inches(1.58),
+            card_w, Inches(0.95),
+            _fmt_val(best_val), size=52, bold=True, color=color,
+            font_name=HEADER_FONT, wrap=False
+        )
 
-        worst_left = side_left + card_w + Inches(0.3)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.5), card_w, Inches(0.32),
-                     "WORST", size=16, bold=True, color=MUTED_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(0.85), card_w, Inches(0.7),
-                     str(worst_player), size=24, bold=True, color=DARK_TEXT)
-        _add_textbox(slide, worst_left, callout_top + Inches(1.58), card_w, Inches(0.95),
-                     _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT, font_name=HEADER_FONT)
+        # WORST card
+        worst_left = side_left + card_w + Inches(0.2)
+
+        _add_textbox(
+            slide, worst_left, callout_top + Inches(0.5),
+            card_w, Inches(0.32),
+            "WORST", size=16, bold=True, color=MUTED_TEXT, wrap=False
+        )
+        _add_textbox(
+            slide, worst_left, callout_top + Inches(0.85),
+            card_w, Inches(0.7),
+            str(worst_player), size=24, bold=True, color=DARK_TEXT,
+            wrap=False, autosize=True
+        )
+        _add_textbox(
+            slide, worst_left, callout_top + Inches(1.58),
+            card_w, Inches(0.95),
+            _fmt_val(worst_val), size=52, bold=True, color=MUTED_TEXT,
+            font_name=HEADER_FONT, wrap=False
+        )
+
 
     footer_left = f"{phase_name} \u2014 {label}"
     footer_right = f"{team_name.upper()} vs {opponent_name.upper()}"
