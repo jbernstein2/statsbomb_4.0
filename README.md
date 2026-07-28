@@ -39,26 +39,6 @@ streamlit run streamlit_app.py
    - `team_comparison.csv`
    - `<team>_players.csv` / `<opponent>_players.csv`
 
-## Using `pptx_generator.py` standalone
-
-```python
-import pptx_generator as pg
-
-pg.generate_report(
-    comparison_csv="team_comparison.csv",
-    team_name="Brooklyn FC",
-    team_color="#0B3D91",
-    opponent_name="Sporting JAX",
-    opponent_color="#F2A900",
-    output_path="match_report.pptx",
-    match_title="Sporting JAX vs. Brooklyn FC",
-    team_player_stats_csv="bkfc_players.csv",       # optional
-    opponent_player_stats_csv="opp_players.csv",     # optional
-    avg_position_image="avg_position.png",           # optional
-    subtitle="USL Championship - 2026-07-19",        # optional
-)
-```
-
 ## Notes / customizing KPIs
 
 - The set of KPIs that appear in the comparison table is defined in
