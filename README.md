@@ -1,4 +1,4 @@
-### Match Report Generator
+# Match Report Generator
 
 Turns StatsBomb CSV exports (all-events + crosses, for two teams) into:
 
