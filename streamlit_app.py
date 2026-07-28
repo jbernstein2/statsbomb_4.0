@@ -106,7 +106,7 @@ def main():
     # ------------------------------------------------------------
     # 2. Manual PPDA input
     # ------------------------------------------------------------
-    st.header("2. PPDA — Attacking Half (manual entry)")
+    st.header("2. PPDA (manual entry)")
     col_ppda_1, col_ppda_2 = st.columns(2)
     with col_ppda_1:
         bkfc_ppda = st.number_input("Input BKFC PPDA", min_value=0.0, step=0.1, format="%.2f")
