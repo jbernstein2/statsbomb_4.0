@@ -1,4 +1,4 @@
-**# Match Report Generator
+### Match Report Generator
 
 Turns StatsBomb CSV exports (all-events + crosses, for two teams) into:
 
@@ -31,7 +31,7 @@ streamlit run streamlit_app.py
    direct numeric input.
 3. Enter each team's **display name** (as it should appear in the
    deck) and pick a **brand color** for each.
-4. Optionally upload a **BKFC average position PNG** — it becomes its
+4. Upload a **average position PNG and shot map PNG for each team** — it becomes its
    own slide in the deck.
 5. Click **Generate report** to see the KPI table and player tables
    in-app, then download:
