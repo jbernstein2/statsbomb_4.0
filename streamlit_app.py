@@ -109,9 +109,9 @@ def main():
     st.header("2. PPDA — Attacking Half (manual entry)")
     col_ppda_1, col_ppda_2 = st.columns(2)
     with col_ppda_1:
-        bkfc_ppda = st.number_input("Input BKFC attacking-half PPDA", min_value=0.0, step=0.1, format="%.2f")
+        bkfc_ppda = st.number_input("Input BKFC PPDA", min_value=0.0, step=0.1, format="%.2f")
     with col_ppda_2:
-        opponent_ppda = st.number_input("Input opponent attacking-half PPDA", min_value=0.0, step=0.1, format="%.2f")
+        opponent_ppda = st.number_input("Input opponent PPDA", min_value=0.0, step=0.1, format="%.2f")
 
     # ------------------------------------------------------------
     # 3. Team details (Brooklyn fixed; Opponent inputs)
